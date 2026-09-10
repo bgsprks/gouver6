@@ -1,0 +1,861 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistem Absensi QR Terintegrasi</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- SheetJS (Baca/Tulis Excel) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <!-- HTML5 QRCode (Scanner) -->
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <!-- QRious (Generate QR) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
+    <!-- JSZip (Batch Zip) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <!-- FileSaver (Simpan File) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+
+    <style>
+        /* Custom Styling for QR Scanner */
+        #reader { width: 100%; max-width: 500px; margin: 0 auto; border-radius: 0.5rem; overflow: hidden; border: none !important; }
+        #reader video { border-radius: 0.5rem; object-fit: cover; }
+        #reader__dashboard_section_csr span { color: white !important; }
+        #reader__dashboard_section_swaplink { color: #facc15 !important; }
+        .tab-btn.active { border-bottom: 4px solid #facc15; font-weight: bold; background-color: rgba(255, 255, 255, 0.1); }
+        .glass-panel { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); }
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 font-sans min-h-screen flex flex-col">
+
+    <!-- Header Navbar -->
+    <header class="bg-blue-600 text-white shadow-md sticky top-0 z-40">
+        <div class="container mx-auto px-4 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
+            <h1 class="text-2xl font-bold flex items-center gap-2">
+                <svg class="w-8 h-8 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z"></path><path fill-rule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z" clip-rule="evenodd"></path></svg>
+                QR Absensi Pro
+            </h1>
+            <nav class="flex overflow-x-auto w-full md:w-auto pb-2 md:pb-0 hide-scrollbar gap-1">
+                <button onclick="switchTab('scan')" id="tab-scan" class="tab-btn active px-4 py-2 rounded-t-md whitespace-nowrap hover:bg-blue-700 transition">Scan QR</button>
+                <button onclick="switchTab('data')" id="tab-data" class="tab-btn px-4 py-2 rounded-t-md whitespace-nowrap hover:bg-blue-700 transition">Data Peserta</button>
+                <button onclick="switchTab('status')" id="tab-status" class="tab-btn px-4 py-2 rounded-t-md whitespace-nowrap hover:bg-blue-700 transition">Status Peserta</button>
+                <button onclick="switchTab('stats')" id="tab-stats" class="tab-btn px-4 py-2 rounded-t-md whitespace-nowrap hover:bg-blue-700 transition">Statistik</button>
+                <button onclick="switchTab('rekap')" id="tab-rekap" class="tab-btn px-4 py-2 rounded-t-md whitespace-nowrap hover:bg-blue-700 transition">Rekap Absen</button>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-grow container mx-auto px-4 py-8">
+        
+        <section id="sec-scan" class="tab-content max-w-2xl mx-auto glass-panel p-6 rounded-2xl shadow-xl border-t-4 border-pink-600">
+            <h2 class="text-2xl font-bold text-blue-800 mb-4 text-center">Scan QR Kehadiran</h2>
+            
+            <div class="flex justify-center gap-4 mb-6">
+                <button id="btn-start-scan" onclick="startScanner()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-xl shadow-md transition flex items-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    Mulai Scan
+                </button>
+                <button id="btn-stop-scan" onclick="stopScanner()" class="hidden bg-pink-600 hover:bg-pink-700 text-white font-bold py-3 px-6 rounded-xl shadow-md transition flex items-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"></path></svg>
+                    Berhenti
+                </button>
+            </div>
+
+            <div class="relative bg-gray-900 rounded-xl shadow-inner min-h-[300px] flex items-center justify-center p-2">
+                <div id="reader" class="w-full"></div>
+                <p id="reader-placeholder" class="text-gray-400 absolute text-center px-4">Kamera mati. Klik "Mulai Scan" untuk menghidupkan.</p>
+            </div>
+
+            <div id="scan-result" class="mt-6 p-4 rounded-xl hidden text-center font-bold text-lg border-2"></div>
+        </section>
+
+        <section id="sec-data" class="tab-content hidden glass-panel p-6 rounded-2xl shadow-xl border-t-4 border-blue-600">
+            <h2 class="text-2xl font-bold text-blue-800 mb-6 border-b-2 border-yellow-400 pb-2">Manajemen Data Peserta</h2>
+            
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                <div class="bg-blue-50 p-5 rounded-xl border border-blue-200">
+                    <h3 class="font-bold text-blue-900 mb-3 flex items-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path></svg>
+                        Koneksi Database (GAS)
+                    </h3>
+                    <input type="text" id="gas-url" placeholder="Masukkan URL Google Apps Script Web App..." class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:outline-none mb-3">
+                    <button onclick="saveGasUrl()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition shadow">Simpan URL & Sinkronisasi</button>
+                    <p class="text-xs text-gray-500 mt-2">*URL diperlukan agar data tersinkronisasi online ke Google Sheets.</p>
+                </div>
+                
+                <div class="bg-pink-50 p-5 rounded-xl border border-pink-200">
+                    <h3 class="font-bold text-pink-900 mb-3 flex items-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                        Upload Excel Lokal
+                    </h3>
+                    <input type="file" id="excel-upload" accept=".xlsx, .xls" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-pink-600 file:text-white hover:file:bg-pink-700 mb-3 cursor-pointer">
+                    <p class="text-xs text-gray-600">Format kolom yang wajib: <b>id, nama, prodi, fakultas, kelompok, kelas</b></p>
+                </div>
+            </div>
+
+            <div class="flex flex-wrap gap-3 mb-4 justify-between items-center">
+                <h3 class="text-lg font-bold">Daftar Peserta (<span id="total-peserta-label">0</span>)</h3>
+                <div class="flex gap-2">
+                    <button onclick="downloadBatchQR()" class="bg-yellow-400 hover:bg-yellow-500 text-yellow-900 font-bold py-2 px-4 rounded-lg transition shadow flex items-center gap-1">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                        Download Batch QR (.zip)
+                    </button>
+                    <button onclick="hapusSemuaData()" class="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg transition shadow flex items-center gap-1">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                        Hapus Data
+                    </button>
+                </div>
+            </div>
+
+            <div class="overflow-x-auto bg-white rounded-xl shadow border border-gray-200 max-h-96">
+                <table class="min-w-full text-sm text-left">
+                    <thead class="text-xs text-white uppercase bg-blue-600 sticky top-0">
+                        <tr>
+                            <th class="px-4 py-3">ID</th>
+                            <th class="px-4 py-3">Nama</th>
+                            <th class="px-4 py-3">Prodi</th>
+                            <th class="px-4 py-3">Fakultas</th>
+                            <th class="px-4 py-3">Kelompok</th>
+                            <th class="px-4 py-3">Kelas</th>
+                            <th class="px-4 py-3 text-center">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-data-peserta" class="divide-y divide-gray-200">
+                        <tr><td colspan="7" class="px-4 py-4 text-center text-gray-500">Belum ada data peserta. Silakan upload Excel.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section id="sec-status" class="tab-content hidden glass-panel p-6 rounded-2xl shadow-xl border-t-4 border-yellow-400">
+            <h2 class="text-2xl font-bold text-blue-800 mb-6 border-b-2 border-blue-600 pb-2">Status Kehadiran Peserta</h2>
+            
+            <div class="flex flex-col md:flex-row justify-between items-center gap-4 mb-6">
+                <div class="w-full md:w-1/3">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Filter berdasarkan Fakultas</label>
+                    <select id="filter-fakultas" onchange="renderStatusPeserta()" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white shadow-sm">
+                        <option value="all">Semua Fakultas</option>
+                    </select>
+                </div>
+                <div class="flex gap-4 text-sm font-bold">
+                    <span class="px-4 py-2 bg-green-100 text-green-800 rounded-lg border border-green-200">Total Hadir: <span id="lbl-total-hadir">0</span></span>
+                    <span class="px-4 py-2 bg-red-100 text-red-800 rounded-lg border border-red-200">Total Belum: <span id="lbl-total-belum">0</span></span>
+                </div>
+            </div>
+
+            <div class="overflow-x-auto bg-white rounded-xl shadow border border-gray-200 max-h-96">
+                <table class="min-w-full text-sm text-left">
+                    <thead class="text-xs text-white uppercase bg-pink-700 sticky top-0">
+                        <tr>
+                            <th class="px-4 py-3">ID</th>
+                            <th class="px-4 py-3">Nama</th>
+                            <th class="px-4 py-3">Fakultas</th>
+                            <th class="px-4 py-3">Kelas</th>
+                            <th class="px-4 py-3 text-center">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-status-peserta" class="divide-y divide-gray-200">
+                        <!-- Data populated by JS -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section id="sec-stats" class="tab-content hidden glass-panel p-6 rounded-2xl shadow-xl border-t-4 border-blue-600">
+            <h2 class="text-2xl font-bold text-blue-800 mb-6 border-b-2 border-pink-600 pb-2">Statistik Kehadiran per Fakultas</h2>
+            
+            <div id="stats-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <!-- Data populated by JS -->
+                <div class="col-span-full text-center text-gray-500 py-8">Data belum tersedia.</div>
+            </div>
+        </section>
+
+        <section id="sec-rekap" class="tab-content hidden glass-panel p-6 rounded-2xl shadow-xl border-t-4 border-yellow-400">
+            <h2 class="text-2xl font-bold text-blue-800 mb-6 border-b-2 border-blue-600 pb-2">Rekapitulasi Absen (Diurutkan berdasar ID)</h2>
+            
+            <div class="flex justify-end mb-4">
+                <button onclick="downloadRekapExcel()" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-lg transition shadow flex items-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                    Download Excel Rekap
+                </button>
+            </div>
+
+            <div class="overflow-x-auto bg-white rounded-xl shadow border border-gray-200 max-h-96">
+                <table class="min-w-full text-sm text-left">
+                    <thead class="text-xs text-white uppercase bg-blue-600 sticky top-0">
+                        <tr>
+                            <th class="px-4 py-3">ID</th>
+                            <th class="px-4 py-3">Nama</th>
+                            <th class="px-4 py-3">Kelompok</th>
+                            <th class="px-4 py-3">Kelas</th>
+                            <th class="px-4 py-3">Waktu Absen</th>
+                            <th class="px-4 py-3 text-center">Status Kehadiran</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-rekap-absen" class="divide-y divide-gray-200">
+                        <!-- Data populated by JS -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <!-- Modal Tampil QR Individu -->
+    <div id="modal-qr" class="fixed inset-0 bg-black bg-opacity-60 z-50 hidden flex items-center justify-center backdrop-blur-sm">
+        <div class="bg-white p-6 rounded-2xl shadow-2xl max-w-sm w-full mx-4 transform transition-all">
+            <h3 class="text-xl font-bold text-blue-800 mb-2 text-center" id="modal-qr-title">Kode QR Peserta</h3>
+            <p class="text-sm text-gray-500 text-center mb-4" id="modal-qr-subtitle"></p>
+            <div class="flex justify-center bg-gray-50 p-4 rounded-xl border border-gray-200 mb-6">
+                <canvas id="canvas-qr-single"></canvas>
+            </div>
+            <button onclick="closeModalQR()" class="w-full bg-pink-600 hover:bg-pink-700 text-white font-bold py-2 rounded-xl transition">Tutup</button>
+        </div>
+    </div>
+
+    <!-- Custom Confirm Modal -->
+    <div id="modal-confirm" class="fixed inset-0 bg-black bg-opacity-60 z-50 hidden flex items-center justify-center backdrop-blur-sm">
+        <div class="bg-white p-6 rounded-2xl shadow-2xl max-w-sm w-full mx-4">
+            <h3 class="text-xl font-bold text-red-600 mb-3" id="confirm-title">Konfirmasi</h3>
+            <p class="text-gray-700 mb-6" id="confirm-msg">Apakah Anda yakin?</p>
+            <div class="flex justify-end gap-3">
+                <button onclick="closeConfirm()" class="px-4 py-2 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300">Batal</button>
+                <button id="btn-confirm-action" class="px-4 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700">Ya, Lanjutkan</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toast-container" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" class="fixed inset-0 bg-white bg-opacity-80 z-[60] hidden flex-col items-center justify-center">
+        <div class="w-16 h-16 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mb-4"></div>
+        <p class="text-lg font-bold text-blue-800" id="loading-text">Memproses Data...</p>
+    </div>
+
+    <script>
+        // State Application
+        let participants = JSON.parse(localStorage.getItem('participants') || '[]');
+        let attendance = JSON.parse(localStorage.getItem('attendance') || '{}'); // format: { id: timestamp }
+        let gasUrlConfig = localStorage.getItem('gasUrl') || '';
+        
+        let html5QrcodeScanner = null;
+        let isScanning = false;
+
+        // Initialize App
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('gas-url').value = gasUrlConfig;
+            
+            // Set up file listener
+            document.getElementById('excel-upload').addEventListener('change', handleExcelUpload);
+            
+            refreshAllUI();
+        });
+
+        // Tab Switcher
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+            
+            document.getElementById(`sec-${tabId}`).classList.remove('hidden');
+            document.getElementById(`tab-${tabId}`).classList.add('active');
+
+            if(tabId !== 'scan' && isScanning) {
+                stopScanner();
+            }
+            if(tabId === 'status') renderStatusPeserta();
+            if(tabId === 'stats') renderStatistik();
+            if(tabId === 'rekap') renderRekap();
+        }
+
+        // Custom UI Components (Toast & Loading)
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            
+            let bgClass = 'bg-blue-600';
+            if (type === 'success') bgClass = 'bg-green-500';
+            if (type === 'error') bgClass = 'bg-red-500';
+            if (type === 'warning') bgClass = 'bg-yellow-500 text-yellow-900';
+
+            toast.className = `${bgClass} text-white px-6 py-3 rounded-xl shadow-lg transform transition-all duration-300 translate-y-10 opacity-0 font-semibold flex items-center gap-2`;
+            toast.innerHTML = message;
+            
+            container.appendChild(toast);
+            
+            setTimeout(() => { toast.classList.remove('translate-y-10', 'opacity-0'); }, 10);
+            setTimeout(() => { 
+                toast.classList.add('opacity-0', 'translate-y-2'); 
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        function showLoading(text = 'Memproses...') {
+            document.getElementById('loading-text').innerText = text;
+            document.getElementById('loading-overlay').classList.remove('hidden');
+            document.getElementById('loading-overlay').classList.add('flex');
+        }
+
+        function hideLoading() {
+            document.getElementById('loading-overlay').classList.add('hidden');
+            document.getElementById('loading-overlay').classList.remove('flex');
+        }
+
+        function confirmAction(title, msg, callback) {
+            document.getElementById('confirm-title').innerText = title;
+            document.getElementById('confirm-msg').innerText = msg;
+            const modal = document.getElementById('modal-confirm');
+            modal.classList.remove('hidden');
+            
+            document.getElementById('btn-confirm-action').onclick = () => {
+                modal.classList.add('hidden');
+                callback();
+            };
+        }
+        function closeConfirm() {
+            document.getElementById('modal-confirm').classList.add('hidden');
+        }
+
+        function saveGasUrl() {
+            const url = document.getElementById('gas-url').value.trim();
+            if(!url) {
+                showToast('URL tidak boleh kosong', 'error'); return;
+            }
+            gasUrlConfig = url;
+            localStorage.setItem('gasUrl', url);
+            showToast('URL GAS Berhasil disimpan.', 'success');
+            
+            // Sync all existing data to gas
+            if(participants.length > 0) {
+                syncToGasBatch('sync_peserta', {peserta: participants});
+            }
+        }
+
+        async function syncToGasBatch(action, payload) {
+            if(!gasUrlConfig) return; // Silent skip if no url configured (offline mode)
+            
+            try {
+                const bodyData = { action: action, ...payload };
+                fetch(gasUrlConfig, {
+                    method: 'POST',
+                    mode: 'no-cors', // Because GAS might have strict CORS, no-cors is used for fire-and-forget
+                    cache: 'no-cache',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(bodyData)
+                }).then(() => {
+                    console.log('Background sync fired for:', action);
+                }).catch(err => console.error('Sync error:', err));
+            } catch(e) {
+                console.error('Fetch fail', e);
+            }
+        }
+
+        function handleExcelUpload(e) {
+            const file = e.target.files[0];
+            if(!file) return;
+
+            showLoading('Membaca file Excel...');
+            const reader = new FileReader();
+            
+            reader.onload = function(evt) {
+                try {
+                    const bstr = evt.target.result;
+                    const wb = XLSX.read(bstr, {type: 'binary'});
+                    const wsname = wb.SheetNames[0];
+                    const ws = wb.Sheets[wsname];
+                    const data = XLSX.utils.sheet_to_json(ws, {raw: false});
+                    
+                    // Normalize keys to lowercase for easier mapping
+                    const mappedData = data.map(row => {
+                        const keys = Object.keys(row);
+                        const p = {};
+                        keys.forEach(k => { p[k.toString().toLowerCase().trim()] = row[k]; });
+                        return {
+                            id: p['id'] || p['nim'] || p['no'] || `ID-${Math.floor(Math.random()*10000)}`,
+                            nama: p['nama'] || p['nama peserta'] || '-',
+                            prodi: p['prodi'] || p['program studi'] || '-',
+                            fakultas: p['fakultas'] || '-',
+                            kelompok: p['kelompok'] || '-',
+                            kelas: p['kelas'] || 'Reguler Pagi'
+                        };
+                    });
+
+                    if(mappedData.length === 0) throw new Error("Data kosong atau format salah");
+
+                    participants = mappedData;
+                    localStorage.setItem('participants', JSON.stringify(participants));
+                    
+                    refreshAllUI();
+                    showToast(`${mappedData.length} data peserta berhasil dimuat.`, 'success');
+                    
+                    // Trigger sync to gas
+                    syncToGasBatch('sync_peserta', {peserta: participants});
+                    
+                } catch(error) {
+                    showToast('Gagal membaca file Excel. Pastikan format benar.', 'error');
+                    console.error(error);
+                } finally {
+                    hideLoading();
+                    document.getElementById('excel-upload').value = ""; // Reset input
+                }
+            };
+            reader.readAsBinaryString(file);
+        }
+
+        function refreshAllUI() {
+            renderDataPeserta();
+            updateFakultasFilter();
+        }
+
+        function renderDataPeserta() {
+            const tbody = document.getElementById('table-data-peserta');
+            document.getElementById('total-peserta-label').innerText = participants.length;
+            
+            if(participants.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="7" class="px-4 py-4 text-center text-gray-500">Belum ada data. Silakan upload Excel.</td></tr>`;
+                return;
+            }
+
+            let html = '';
+            participants.forEach((p, index) => {
+                html += `
+                <tr class="hover:bg-blue-50 transition">
+                    <td class="px-4 py-3 font-semibold text-blue-800">${p.id}</td>
+                    <td class="px-4 py-3">${p.nama}</td>
+                    <td class="px-4 py-3">${p.prodi}</td>
+                    <td class="px-4 py-3"><span class="bg-pink-100 text-pink-800 px-2 py-1 rounded text-xs font-bold">${p.fakultas}</span></td>
+                    <td class="px-4 py-3 text-center">${p.kelompok}</td>
+                    <td class="px-4 py-3">${p.kelas}</td>
+                    <td class="px-4 py-3 text-center">
+                        <button onclick="tampilQR('${p.id}', '${p.nama.replace(/'/g, "\\'")}', '${p.prodi.replace(/'/g, "\\'")}')" class="bg-blue-100 hover:bg-blue-200 text-blue-700 p-2 rounded-lg transition" title="Lihat QR">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm14 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"></path></svg>
+                        </button>
+                    </td>
+                </tr>`;
+            });
+            tbody.innerHTML = html;
+        }
+
+        function hapusSemuaData() {
+            confirmAction('Hapus Data?', 'Semua data peserta dan data absen akan dikosongkan. Lanjutkan?', () => {
+                participants = [];
+                attendance = {};
+                localStorage.setItem('participants', '[]');
+                localStorage.setItem('attendance', '{}');
+                refreshAllUI();
+                syncToGasBatch('clear_data', {});
+                showToast('Data berhasil dikosongkan.', 'success');
+            });
+        }
+
+        function tampilQR(id, nama, prodi) {
+            document.getElementById('modal-qr-title').innerText = nama;
+            document.getElementById('modal-qr-subtitle').innerText = `${id} - ${prodi}`;
+            
+            const canvas = document.getElementById('canvas-qr-single');
+            new QRious({
+                element: canvas,
+                value: id,
+                size: 250,
+                background: 'white',
+                foreground: 'black'
+            });
+            
+            document.getElementById('modal-qr').classList.remove('hidden');
+        }
+
+        function closeModalQR() {
+            document.getElementById('modal-qr').classList.add('hidden');
+        }
+
+        async function downloadBatchQR() {
+            if(participants.length === 0) {
+                showToast('Tidak ada data peserta untuk diunduh', 'warning');
+                return;
+            }
+
+            showLoading('Membuat File ZIP QR Code...');
+            
+            const zip = new JSZip();
+            const qrFolder = zip.folder("QR_Peserta");
+            
+            // Proses generate secara async batch agar UI tidak membeku sepenuhnya
+            await new Promise(resolve => setTimeout(resolve, 50)); 
+
+            // Create offscreen canvas for drawing text + QR
+            const canvas = document.createElement('canvas');
+            canvas.width = 400;
+            canvas.height = 500;
+            const ctx = canvas.getContext('2d');
+
+            for(let i = 0; i < participants.length; i++) {
+                const p = participants[i];
+                
+                // Clear and draw background
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                // Generate QR data URL
+                const qr = new QRious({ value: String(p.id), size: 300 });
+                const qrImg = new Image();
+                qrImg.src = qr.toDataURL();
+                
+                // Wait for image load (usually instant for base64 but safe to await)
+                await new Promise(res => {
+                    qrImg.onload = () => {
+                        // Draw QR Image
+                        ctx.drawImage(qrImg, 50, 40);
+                        
+                        // Draw Texts
+                        ctx.fillStyle = '#1e3a8a'; // blue-900
+                        ctx.textAlign = 'center';
+                        
+                        ctx.font = 'bold 22px Arial';
+                        ctx.fillText(p.nama, 200, 380);
+                        
+                        ctx.font = '18px Arial';
+                        ctx.fillStyle = '#4b5563'; // gray-600
+                        ctx.fillText(`ID: ${p.id}`, 200, 415);
+                        
+                        ctx.font = 'italic 16px Arial';
+                        ctx.fillStyle = '#db2777'; // pink-600
+                        ctx.fillText(p.prodi, 200, 450);
+                        
+                        res();
+                    }
+                });
+
+                // Convert canvas to blob
+                const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.9));
+                // Add to zip
+                const fileName = `${p.id}_${p.nama.replace(/[^a-zA-Z0-9]/g, "_")}.jpg`;
+                qrFolder.file(fileName, blob);
+            }
+
+            // Generate ZIP
+            zip.generateAsync({type:"blob"}).then(function(content) {
+                saveAs(content, "QR_Code_Peserta.zip");
+                hideLoading();
+                showToast('Berhasil mengunduh batch QR!', 'success');
+            });
+        }
+
+        function startScanner() {
+            if(participants.length === 0) {
+                showToast('Upload data peserta terlebih dahulu!', 'warning');
+                return;
+            }
+
+            document.getElementById('reader-placeholder').classList.add('hidden');
+            document.getElementById('btn-start-scan').classList.add('hidden');
+            document.getElementById('btn-stop-scan').classList.remove('hidden');
+            document.getElementById('scan-result').classList.add('hidden');
+
+            const qrboxFunction = function(viewfinderWidth, viewfinderHeight) {
+                let minEdgePercentage = 0.7; // 70%
+                let minEdgeSize = Math.min(viewfinderWidth, viewfinderHeight);
+                let qrboxSize = Math.floor(minEdgeSize * minEdgePercentage);
+                return { width: qrboxSize, height: qrboxSize };
+            }
+
+            html5QrcodeScanner = new Html5Qrcode("reader");
+            const config = { fps: 10, qrbox: qrboxFunction, aspectRatio: 1.0 };
+            
+            html5QrcodeScanner.start({ facingMode: "environment" }, config, onScanSuccess)
+                .then(() => { isScanning = true; })
+                .catch(err => {
+                    showToast('Gagal mengakses kamera.', 'error');
+                    stopScanner();
+                });
+        }
+
+        function stopScanner() {
+            if(html5QrcodeScanner && isScanning) {
+                html5QrcodeScanner.stop().then(() => {
+                    isScanning = false;
+                    resetScannerUI();
+                }).catch(err => console.log("Stop error", err));
+            } else {
+                resetScannerUI();
+            }
+        }
+
+        function resetScannerUI() {
+            document.getElementById('reader-placeholder').classList.remove('hidden');
+            document.getElementById('btn-start-scan').classList.remove('hidden');
+            document.getElementById('btn-stop-scan').classList.add('hidden');
+        }
+
+        // Variable untuk mencegah scan berulang super cepat
+        let lastScannedId = "";
+        let scanDebounce = null;
+
+        function onScanSuccess(decodedText) {
+            if(decodedText === lastScannedId) return; // Prevent double rapid scan
+            lastScannedId = decodedText;
+            clearTimeout(scanDebounce);
+            scanDebounce = setTimeout(() => { lastScannedId = ""; }, 3000); // Reset after 3s
+
+            processAttendance(decodedText);
+        }
+
+        function processAttendance(scannedId) {
+            // Trim and clean scanned ID
+            scannedId = scannedId.trim();
+            const resultBox = document.getElementById('scan-result');
+            resultBox.classList.remove('hidden', 'bg-green-100', 'text-green-800', 'bg-red-100', 'text-red-800', 'bg-yellow-100', 'text-yellow-800', 'border-green-400', 'border-red-400', 'border-yellow-400');
+            
+            // Cari peserta
+            const peserta = participants.find(p => String(p.id) === String(scannedId));
+            
+            if(!peserta) {
+                // Not found
+                playBeep(false);
+                resultBox.classList.add('bg-red-100', 'text-red-800', 'border-red-400');
+                resultBox.innerHTML = `&#10006; Gagal! ID [${scannedId}] tidak terdaftar.`;
+                return;
+            }
+
+            if(attendance[scannedId]) {
+                // Already scanned
+                playBeep(false);
+                resultBox.classList.add('bg-yellow-100', 'text-yellow-800', 'border-yellow-400');
+                resultBox.innerHTML = `&#9888; Sudah Absen!<br><span class="text-sm font-normal">${peserta.nama} (${peserta.id})</span>`;
+                return;
+            }
+
+            // Success Absen
+            playBeep(true);
+            const now = new Date().toISOString();
+            attendance[scannedId] = now;
+            localStorage.setItem('attendance', JSON.stringify(attendance));
+            
+            resultBox.classList.add('bg-green-100', 'text-green-800', 'border-green-400');
+            resultBox.innerHTML = `&#10004; Absen Berhasil!<br><span class="text-blue-700 font-bold text-xl">${peserta.nama}</span><br><span class="text-sm font-normal">${peserta.prodi} - Kls: ${peserta.kelas}</span>`;
+
+            // Sync to GAS in background
+            syncToGasBatch('absen', { id: scannedId, timestamp: now });
+        }
+
+        // Simple beep sound using Web Audio API
+        function playBeep(success) {
+            try {
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                
+                if(success) {
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(800, ctx.currentTime);
+                    gain.gain.setValueAtTime(0.1, ctx.currentTime);
+                    osc.start();
+                    osc.stop(ctx.currentTime + 0.15);
+                } else {
+                    osc.type = 'square';
+                    osc.frequency.setValueAtTime(200, ctx.currentTime);
+                    gain.gain.setValueAtTime(0.1, ctx.currentTime);
+                    osc.start();
+                    osc.stop(ctx.currentTime + 0.3);
+                }
+            } catch(e) { console.log('Audio error ignored'); }
+        }
+
+        function updateFakultasFilter() {
+            const select = document.getElementById('filter-fakultas');
+            select.innerHTML = '<option value="all">Semua Fakultas</option>';
+            
+            const fakultasSet = new Set(participants.map(p => p.fakultas));
+            fakultasSet.forEach(f => {
+                if(f && f !== '-') {
+                    select.innerHTML += `<option value="${f}">${f}</option>`;
+                }
+            });
+        }
+
+        function renderStatusPeserta() {
+            const tbody = document.getElementById('table-status-peserta');
+            const filterFakultas = document.getElementById('filter-fakultas').value;
+            
+            let filtered = participants;
+            if(filterFakultas !== 'all') {
+                filtered = participants.filter(p => p.fakultas === filterFakultas);
+            }
+
+            // Sort logic: Belum hadir diatas, atau by name. Let's do by Name.
+            filtered.sort((a,b) => a.nama.localeCompare(b.nama));
+
+            let html = '';
+            let totalHadir = 0;
+
+            filtered.forEach(p => {
+                const isHadir = !!attendance[p.id];
+                if(isHadir) totalHadir++;
+                
+                const statusBadge = isHadir 
+                    ? `<span class="bg-green-500 text-white px-3 py-1 rounded-full text-xs font-bold">Hadir</span>`
+                    : `<span class="bg-red-500 text-white px-3 py-1 rounded-full text-xs font-bold">Belum</span>`;
+
+                html += `
+                <tr class="hover:bg-gray-50 transition">
+                    <td class="px-4 py-2 font-medium">${p.id}</td>
+                    <td class="px-4 py-2">${p.nama}</td>
+                    <td class="px-4 py-2 text-pink-700 font-semibold">${p.fakultas}</td>
+                    <td class="px-4 py-2">${p.kelas}</td>
+                    <td class="px-4 py-2 text-center">${statusBadge}</td>
+                </tr>`;
+            });
+
+            if(filtered.length === 0) {
+                html = `<tr><td colspan="5" class="px-4 py-4 text-center text-gray-500">Tidak ada data.</td></tr>`;
+            }
+
+            tbody.innerHTML = html;
+            document.getElementById('lbl-total-hadir').innerText = totalHadir;
+            document.getElementById('lbl-total-belum').innerText = filtered.length - totalHadir;
+        }
+
+        function renderStatistik() {
+            const container = document.getElementById('stats-container');
+            if(participants.length === 0) {
+                container.innerHTML = '<div class="col-span-full text-center py-8 text-gray-500">Data belum tersedia.</div>';
+                return;
+            }
+
+            // Group by Fakultas
+            const stats = {};
+            participants.forEach(p => {
+                const f = p.fakultas || 'Tidak Diketahui';
+                if(!stats[f]) stats[f] = { total: 0, hadir: 0 };
+                stats[f].total++;
+                if(attendance[p.id]) stats[f].hadir++;
+            });
+
+            let html = '';
+            for(const [fakultas, data] of Object.entries(stats)) {
+                const persen = Math.round((data.hadir / data.total) * 100);
+                const colorTheme = persen === 100 ? 'border-green-400 bg-green-50' : 
+                                   (persen > 50 ? 'border-blue-400 bg-blue-50' : 'border-yellow-400 bg-yellow-50');
+                
+                html += `
+                <div class="p-5 rounded-xl border-l-4 shadow-sm bg-white ${colorTheme} transition hover:shadow-md">
+                    <h3 class="font-bold text-lg text-gray-800 truncate mb-1" title="${fakultas}">${fakultas}</h3>
+                    <div class="flex justify-between items-end mt-4">
+                        <div>
+                            <p class="text-sm text-gray-600">Total: <span class="font-bold">${data.total}</span></p>
+                            <p class="text-sm text-gray-600">Hadir: <span class="font-bold text-green-600">${data.hadir}</span></p>
+                            <p class="text-sm text-gray-600">Absen: <span class="font-bold text-red-500">${data.total - data.hadir}</span></p>
+                        </div>
+                        <div class="text-3xl font-black ${persen===100?'text-green-500':'text-blue-600'}">
+                            ${persen}%
+                        </div>
+                    </div>
+                    <div class="w-full bg-gray-200 rounded-full h-2.5 mt-3">
+                        <div class="${persen===100?'bg-green-500':'bg-blue-600'} h-2.5 rounded-full" style="width: ${persen}%"></div>
+                    </div>
+                </div>
+                `;
+            }
+            container.innerHTML = html;
+        }
+
+        function renderRekap() {
+            const tbody = document.getElementById('table-rekap-absen');
+            
+            // Sort participants by ID explicitly as requested
+            let sorted = [...participants].sort((a,b) => {
+                return String(a.id).localeCompare(String(b.id), undefined, {numeric: true, sensitivity: 'base'});
+            });
+
+            let html = '';
+            sorted.forEach(p => {
+                const timeStr = attendance[p.id];
+                let formattedTime = '-';
+                let statusObj = '<span class="text-red-500 font-bold">&#10008; Alpha</span>';
+                
+                if(timeStr) {
+                    const d = new Date(timeStr);
+                    formattedTime = `${d.toLocaleDateString('id-ID')} ${d.toLocaleTimeString('id-ID')}`;
+                    statusObj = '<span class="text-green-600 font-bold">&#10004; Hadir</span>';
+                }
+
+                html += `
+                <tr class="hover:bg-yellow-50 transition border-b border-gray-100">
+                    <td class="px-4 py-2 font-mono text-blue-900">${p.id}</td>
+                    <td class="px-4 py-2 font-medium">${p.nama}</td>
+                    <td class="px-4 py-2 text-center text-sm">${p.kelompok}</td>
+                    <td class="px-4 py-2 text-xs font-bold text-pink-700">${p.kelas}</td>
+                    <td class="px-4 py-2 text-xs text-gray-600">${formattedTime}</td>
+                    <td class="px-4 py-2 text-center">${statusObj}</td>
+                </tr>`;
+            });
+
+            if(sorted.length === 0) {
+                html = `<tr><td colspan="6" class="px-4 py-4 text-center text-gray-500">Tidak ada data.</td></tr>`;
+            }
+            
+            tbody.innerHTML = html;
+        }
+
+        function downloadRekapExcel() {
+            if(participants.length === 0) {
+                showToast('Tidak ada data untuk didownload', 'warning'); return;
+            }
+
+            // Create array format for sheetjs
+            const exportData = [];
+            
+            // Urutkan by ID
+            let sorted = [...participants].sort((a,b) => String(a.id).localeCompare(String(b.id), undefined, {numeric: true}));
+
+            sorted.forEach(p => {
+                const timeStr = attendance[p.id];
+                let wkt = '-';
+                let sts = 'Belum Hadir';
+                
+                if(timeStr) {
+                    const d = new Date(timeStr);
+                    wkt = `${d.toLocaleDateString('id-ID')} ${d.toLocaleTimeString('id-ID')}`;
+                    sts = 'Hadir';
+                }
+
+                exportData.push({
+                    "ID Peserta": p.id,
+                    "Nama Lengkap": p.nama,
+                    "Program Studi": p.prodi,
+                    "Fakultas": p.fakultas,
+                    "Kelompok": p.kelompok,
+                    "Kelas": p.kelas,
+                    "Status Kehadiran": sts,
+                    "Waktu Scan": wkt
+                });
+            });
+
+            const worksheet = XLSX.utils.json_to_sheet(exportData);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "Rekap Absensi");
+            
+            // Adjust col width
+            const wscols = [
+                {wch: 15}, // id
+                {wch: 30}, // nama
+                {wch: 25}, // prodi
+                {wch: 20}, // fakultas
+                {wch: 15}, // kel
+                {wch: 15}, // kelas
+                {wch: 15}, // status
+                {wch: 20}  // waktu
+            ];
+            worksheet['!cols'] = wscols;
+
+            XLSX.writeFile(workbook, "Rekap_Absensi_Peserta.xlsx");
+            showToast('File Excel Rekap berhasil diunduh.', 'success');
+        }
+    </script>
+</body>
+</html>
